@@ -40,6 +40,18 @@ putenv('VIEW_COMPILED_PATH='.$storagePath.'/framework/views');
 $_ENV['VIEW_COMPILED_PATH'] = $storagePath.'/framework/views';
 $_SERVER['VIEW_COMPILED_PATH'] = $storagePath.'/framework/views';
 
+// Prevent cache & sessions from attempting writes to read-only SQLite in serverless
+if (! getenv('CACHE_STORE')) {
+    putenv('CACHE_STORE=file');
+    $_ENV['CACHE_STORE'] = 'file';
+    $_SERVER['CACHE_STORE'] = 'file';
+}
+if (! getenv('SESSION_DRIVER')) {
+    putenv('SESSION_DRIVER=array');
+    $_ENV['SESSION_DRIVER'] = 'array';
+    $_SERVER['SESSION_DRIVER'] = 'array';
+}
+
 /*
 |--------------------------------------------------------------------------
 | Header & Authorization Normalization
