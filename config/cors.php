@@ -11,17 +11,20 @@ return [
     | Configure CORS settings for the frontend on Vercel and local development.
     |
     */
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    // Include v1/* in case Vercel ever strips the /api prefix before CORS runs.
+    'paths' => ['api/*', 'v1/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => array_filter(array_map('trim', explode(',', env(
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env(
         'CORS_ALLOWED_ORIGINS',
         'https://taxiscanner.vercel.app,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173'
-    )))),
+    ))))),
 
     'allowed_origins_patterns' => [
         '#^https://.*\.vercel\.app$#',
+        '#^http://localhost(:\d+)?$#',
+        '#^http://127\.0\.0\.1(:\d+)?$#',
     ],
 
     'allowed_headers' => ['*'],

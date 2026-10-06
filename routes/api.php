@@ -21,3 +21,8 @@ Route::prefix('v1')->group(function () {
         ->middleware('throttle:60,1')
         ->name('api.v1.compare');
 });
+
+// Alias: /api/compare → same handler as /api/v1/compare
+Route::post('/compare', CompareController::class)
+    ->middleware('throttle:60,1')
+    ->name('api.compare');
