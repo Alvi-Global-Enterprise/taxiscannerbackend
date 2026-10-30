@@ -112,6 +112,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Postcode Coverage Filter (Req 2)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, /compare only returns firms that either:
+    | - coverage_mode = nationwide, or
+    | - coverage_mode = postcodes and pickup outcode is assigned to the firm.
+    |
+    */
+    'coverage' => [
+        'enabled' => (bool) env('TAXISCANNER_POSTCODE_FILTER_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provider Stats (Req 2)
+    |--------------------------------------------------------------------------
+    |
+    | Records compare impressions and booking clicks for admin dashboards.
+    |
+    */
+    'stats' => [
+        'enabled' => (bool) env('TAXISCANNER_STATS_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin API Auth
+    |--------------------------------------------------------------------------
+    */
+    'admin' => [
+        'api_token' => env('ADMIN_API_TOKEN', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | StreetCars Empirical Geographic Calibration (Airport to Suburb)
     |--------------------------------------------------------------------------
     |

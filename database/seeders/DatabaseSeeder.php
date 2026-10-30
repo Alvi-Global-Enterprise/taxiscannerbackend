@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             ProviderSeeder::class,
             CalibrationObservationSeeder::class,
+            ProviderPostcodeSeeder::class,
         ]);
     }
 }

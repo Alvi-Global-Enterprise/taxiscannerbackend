@@ -60,6 +60,7 @@ class CompareResource extends JsonResource
                     'is_estimated' => $result->route->isEstimated,
                 ],
                 'quotes' => TaxiQuoteResource::collection($result->quotes),
+                'matched_town' => $result->matchedTown,
             ],
             'meta' => [
                 'quote_type' => 'estimate',

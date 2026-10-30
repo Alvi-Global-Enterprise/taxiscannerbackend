@@ -10,6 +10,7 @@ use App\Domain\Location\DTOs\Location;
 use App\Domain\Location\DTOs\RouteInformation;
 use App\Domain\Location\Exceptions\GeocodingException;
 use App\Domain\Location\Exceptions\RouteCalculationException;
+use App\Domain\Location\Services\TownZoneResolver;
 use App\Domain\Taxi\Contracts\TaxiProviderInterface;
 use App\Domain\Taxi\Contracts\TaxiProviderRegistryInterface;
 use App\Domain\Taxi\DTOs\TaxiComparisonResult;
@@ -17,6 +18,7 @@ use App\Domain\Taxi\DTOs\TaxiQuote;
 use App\Domain\Taxi\DTOs\TripRequest;
 use App\Domain\Taxi\Exceptions\TaxiComparisonException;
 use App\Domain\Taxi\Models\FareEstimate;
+use App\Domain\Taxi\Models\ProviderEvent;
 use App\Domain\Taxi\Models\RouteSearch;
 use Illuminate\Support\Facades\Schema;
 use Psr\Log\LoggerInterface;
@@ -28,6 +30,9 @@ class TaxiComparisonService
         private readonly GeocodingServiceInterface $geocodingService,
         private readonly RouteServiceInterface $routeService,
         private readonly TaxiProviderRegistryInterface $providerRegistry,
+        private readonly ProviderCoverageService $coverageService,
+        private readonly ProviderStatsService $statsService,
+        private readonly TownZoneResolver $townZoneResolver,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -55,13 +60,32 @@ class TaxiComparisonService
         // 2. Calculate Route Distance and Duration
         $route = $this->calculateRoute($pickup, $dropoff);
 
-        // 3. Obtain estimates across all registered providers with failure isolation
-        $quotes = $this->collectProviderQuotes($trip, $route);
+        // 2b. Resolve UK town/city zone for Req 1 coverage
+        $matchedTown = $this->townZoneResolver->resolve(
+            lat: $pickup->coordinates->latitude,
+            lon: $pickup->coordinates->longitude,
+            locationName: $pickup->formattedAddress,
+            query: $pickup->query,
+        );
+
+        // 3. Obtain estimates for providers covering pickup town/region/nation and/or postcode
+        $quotes = $this->collectProviderQuotes(
+            $trip,
+            $route,
+            $pickup,
+            $matchedTown['matching_ids'] ?? (
+                isset($matchedTown['town_id']) && $matchedTown['town_id'] !== null
+                    ? [$matchedTown['town_id']]
+                    : []
+            ),
+        );
 
         $totalDurationMs = round((microtime(true) - $startTime) * 1000, 2);
 
         $this->logger->info('Completed taxi comparison', [
             'pickup' => $pickup->formattedAddress,
+            'pickup_postcode' => $pickup->postcode,
+            'pickup_town_id' => $matchedTown['town_id'] ?? null,
             'dropoff' => $dropoff->formattedAddress,
             'distance_miles' => $route->distanceMiles,
             'duration_minutes' => $route->durationMinutes,
@@ -72,12 +96,16 @@ class TaxiComparisonService
         // 4. Optionally record search for analytics/auditing (fail-safe)
         $this->recordSearchAudit($trip, $pickup, $dropoff, $route, $quotes, $clientIp);
 
+        // 5. Record per-provider compare impressions for admin stats (fail-safe)
+        $this->recordCompareImpressions($quotes, $pickup->postcode, $clientIp);
+
         return new TaxiComparisonResult(
             pickup: $pickup,
             dropoff: $dropoff,
             route: $route,
             quotes: $quotes,
             executionTimeMs: $totalDurationMs,
+            matchedTown: $matchedTown,
         );
     }
 
@@ -210,14 +238,41 @@ class TaxiComparisonService
      * If an individual provider encounters an error, it is recorded as unavailable,
      * and the remaining providers proceed unaffected.
      *
+     * Providers are filtered by pickup postcode coverage when enabled.
+     *
      * @return list<TaxiQuote>
      */
-    private function collectProviderQuotes(TripRequest $trip, RouteInformation $route): array
-    {
+    /**
+     * @param  list<string>  $townIds
+     */
+    private function collectProviderQuotes(
+        TripRequest $trip,
+        RouteInformation $route,
+        Location $pickup,
+        array $townIds = [],
+    ): array {
         $quotes = [];
         $providers = $this->providerRegistry->all();
+        $allowedSlugs = $this->coverageService->matchingProviderSlugs($pickup->postcode, $townIds);
+
+        if ($allowedSlugs !== null) {
+            $this->logger->info('Applying pickup coverage filter (town + postcode)', [
+                'pickup_postcode' => $pickup->postcode,
+                'pickup_town_ids' => $townIds,
+                'allowed_providers' => $allowedSlugs,
+            ]);
+        }
 
         foreach ($providers as $providerSlug => $provider) {
+            if ($allowedSlugs !== null && ! in_array($providerSlug, $allowedSlugs, true)) {
+                $this->logger->info('Skipping provider outside pickup postcode coverage', [
+                    'provider' => $providerSlug,
+                    'pickup_postcode' => $pickup->postcode,
+                ]);
+
+                continue;
+            }
+
             if (! $provider->isEnabled()) {
                 $this->logger->info('Skipping disabled provider', ['provider' => $providerSlug]);
                 $quotes[] = TaxiQuote::unavailable(
@@ -234,6 +289,25 @@ class TaxiComparisonService
         }
 
         return $quotes;
+    }
+
+    /**
+     * @param  list<TaxiQuote>  $quotes
+     */
+    private function recordCompareImpressions(array $quotes, ?string $pickupPostcode, ?string $clientIp): void
+    {
+        foreach ($quotes as $quote) {
+            if (! $quote->isAvailable) {
+                continue;
+            }
+
+            $this->statsService->record(
+                eventType: ProviderEvent::TYPE_COMPARE_IMPRESSION,
+                providerSlug: $quote->providerSlug(),
+                pickupPostcode: $pickupPostcode,
+                clientIp: $clientIp,
+            );
+        }
     }
 
     private function safelyCalculateProviderQuote(

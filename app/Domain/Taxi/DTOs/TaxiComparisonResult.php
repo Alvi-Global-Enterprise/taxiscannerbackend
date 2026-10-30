@@ -11,6 +11,7 @@ final readonly class TaxiComparisonResult
 {
     /**
      * @param  list<TaxiQuote>  $quotes
+     * @param  array{town_id: ?string, match_type: string, display_name: ?string}|null  $matchedTown
      */
     public function __construct(
         public Location $pickup,
@@ -18,6 +19,7 @@ final readonly class TaxiComparisonResult
         public RouteInformation $route,
         public array $quotes,
         public float $executionTimeMs = 0.0,
+        public ?array $matchedTown = null,
     ) {}
 
     public function toArray(): array
@@ -27,6 +29,7 @@ final readonly class TaxiComparisonResult
             'dropoff' => $this->dropoff->toArray(),
             'route' => $this->route->toArray(),
             'quotes' => array_map(static fn (TaxiQuote $q) => $q->toArray(), $this->quotes),
+            'matched_town' => $this->matchedTown,
             'execution_time_ms' => $this->executionTimeMs,
         ];
     }

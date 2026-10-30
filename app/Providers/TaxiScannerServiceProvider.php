@@ -25,8 +25,13 @@ use App\Domain\Taxi\Providers\StreetCarsEstimateProvider;
 use App\Domain\Taxi\Providers\TaxiProviderRegistry;
 use App\Domain\Taxi\Providers\UberEstimateProvider;
 use App\Domain\Taxi\Providers\VeezuEstimateProvider;
+use App\Domain\Pricing\Services\EstimateCalibrationService;
+use App\Domain\Location\Services\TownZoneResolver;
 use App\Domain\Taxi\Services\EstimateEngine;
+use App\Domain\Taxi\Services\ProviderCoverageService;
+use App\Domain\Taxi\Services\ProviderStatsService;
 use App\Domain\Taxi\Services\TaxiComparisonService;
+use App\Domain\Taxi\Services\UkPostcodeNormalizer;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
@@ -131,17 +136,26 @@ class TaxiScannerServiceProvider extends ServiceProvider
             return $registry;
         });
 
-        // 6. Taxi Comparison Orchestrator
+        // 6. Coverage (postcode + town) + admin stats
+        $this->app->singleton(UkPostcodeNormalizer::class);
+        $this->app->singleton(TownZoneResolver::class);
+        $this->app->singleton(ProviderCoverageService::class);
+        $this->app->singleton(ProviderStatsService::class);
+
+        // 7. Taxi Comparison Orchestrator
         $this->app->singleton(TaxiComparisonService::class, function ($app) {
             return new TaxiComparisonService(
                 geocodingService: $app->make(GeocodingServiceInterface::class),
                 routeService: $app->make(RouteServiceInterface::class),
                 providerRegistry: $app->make(TaxiProviderRegistryInterface::class),
+                coverageService: $app->make(ProviderCoverageService::class),
+                statsService: $app->make(ProviderStatsService::class),
+                townZoneResolver: $app->make(TownZoneResolver::class),
                 logger: $app->make(LoggerInterface::class),
             );
         });
 
-        // 7. Estimate Calibration Service
+        // 8. Estimate Calibration Service
         $this->app->singleton(EstimateCalibrationService::class, function ($app) {
             return new EstimateCalibrationService(
                 logger: $app->make(LoggerInterface::class),
