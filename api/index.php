@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
-use Throwable;
 
+// Never print warnings into the HTTP body (breaks JSON clients).
+// Log to stderr for Vercel instead.
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', 'php://stderr');
 
@@ -148,7 +149,7 @@ try {
 
     $app->handleRequest(Request::capture());
 
-} catch (Throwable $e) {
+} catch (\Throwable $e) {
 
     $current = $e;
 
